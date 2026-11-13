@@ -45,7 +45,12 @@
         <div class="band__cell">
           <span class="label">订单事实</span>
           <span class="band__value mono">{{ integer(matrix.stats.orders) }}</span>
-          <span class="band__sub mono">{{ integer(matrix.stats.members) }} 会员</span>
+          <span class="band__sub mono">
+            {{ integer(matrix.stats.members) }} 会员
+            <template v-if="matrix.stats.identity_mode === 'merged'">
+              （原始 {{ integer(matrix.stats.members_raw ?? matrix.stats.members) }} 码）
+            </template>
+          </span>
         </div>
         <div class="band__cell">
           <span class="label">有效 / 总格</span>
@@ -60,9 +65,21 @@
         <div class="band__cell band__cell--note">
           <span class="label">快照口径</span>
           <span class="band__value mono">{{ matrix.snapshot_month }}-30</span>
-          <span class="band__sub mono">M0..M{{ matrix.months - 1 }}</span>
+          <span class="band__sub mono">
+            M0..M{{ matrix.months - 1 }}
+            <template v-if="matrix.stats.identity_mode === 'merged'"> · 认定口径</template>
+          </span>
         </div>
       </section>
+
+      <div v-if="matrix.stats.identity_mode === 'merged'" class="identity-banner">
+        <span class="tag tag--ok">认定生效中（{{ matrix.stats.active_identity_links ?? 0 }} 组）</span>
+        <span class="identity-banner__text">
+          矩阵已按「同一人」重建：按最早消费月重新分群，历史订单只在首次获客渠道计一次；
+          留存矩阵、LTV 与导出共用此结果。
+        </span>
+        <RouterLink to="/identity" class="btn btn--sm" data-test="to-identity">查看认定明细</RouterLink>
+      </div>
 
       <div class="layout">
         <RetentionHeatTable :payload="matrix" :highlight="focusMonth" @select="openCohort" />
@@ -191,6 +208,17 @@ onMounted(load)
   align-items: start;
   margin-top: 16px;
 }
+.identity-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  border: 1px solid var(--rule);
+  background: var(--cream-2);
+  padding: 9px 13px;
+}
+.identity-banner__text { font-size: 12px; color: var(--coffee-2); flex: 1 1 280px; }
 .side { min-width: 0; }
 .side__note { margin: 8px 0 0; font-size: 10.5px; color: var(--coffee-3); line-height: 1.5; }
 

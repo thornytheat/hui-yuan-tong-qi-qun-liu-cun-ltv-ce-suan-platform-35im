@@ -31,6 +31,9 @@ export interface MatrixStats {
   low_sample_cells: number
   orders: number
   members: number
+  members_raw?: number
+  identity_mode?: 'raw' | 'merged'
+  active_identity_links?: number
   revenue_total: number
   cumulative_arpu: number
 }
@@ -167,6 +170,10 @@ export interface LtvResults {
   low_sample: {
     cohorts: { month: string; size: number }[]
     channel_cells: { month: string; channel: string; members: number }[]
+  }
+  identity?: {
+    mode: 'raw' | 'merged'
+    active_links: number
   }
   notes: Record<string, string>
 }

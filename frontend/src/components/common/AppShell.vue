@@ -44,6 +44,10 @@
           <span class="navlink__num">肆</span>
           <span class="navlink__label">渠道对比</span>
         </RouterLink>
+        <RouterLink to="/identity" class="navlink" active-class="is-active" data-test="nav-identity">
+          <span class="navlink__num">伍</span>
+          <span class="navlink__label">会员身份认定</span>
+        </RouterLink>
 
         <div v-if="auth.role === 'admin'" class="rail__audit">
           <div class="eyebrow">复核留痕</div>

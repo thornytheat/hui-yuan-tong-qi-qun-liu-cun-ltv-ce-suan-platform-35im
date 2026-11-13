@@ -9,13 +9,59 @@ from sqlalchemy.orm import Session
 from src.config.settings import settings
 from src.constants import error_codes as codes
 from src.constants.channels import CHANNEL_LABELS, CHANNEL_NOTES, CHANNEL_SHORT
-from src.constants.enums import COHORT_CHANNELS, Channel
+from src.constants.enums import COHORT_CHANNELS, Channel, IdentityStatus
 from src.models.cohort import Cohort
+from src.models.member_identity_link import MemberIdentityLink
 from src.models.member_order import MemberOrder
 from src.models.retention_cell import RetentionCell
+from src.services import identity_core
 from src.utils.aggregates import AMOUNT_BUCKETS, bucket_amounts
 from src.utils.errors import AppError, not_found
 from src.utils.months import observed_months
+
+
+def _order_dicts(db: Session) -> list[dict]:
+    return [
+        {
+            "member_code": o.member_code,
+            "cohort_month": o.cohort_month,
+            "channel": o.channel,
+            "order_month": o.order_month,
+            "month_index": o.month_index,
+            "amount": float(o.amount),
+            "is_first_order": bool(o.is_first_order),
+            "ordered_at": o.ordered_at.isoformat() if o.ordered_at else "",
+        }
+        for o in db.execute(select(MemberOrder)).scalars().all()
+    ]
+
+
+def _active_identity_links(db: Session) -> list[MemberIdentityLink]:
+    return list(
+        db.execute(
+            select(MemberIdentityLink).where(
+                MemberIdentityLink.status == IdentityStatus.ACTIVE.value
+            )
+        ).scalars().all()
+    )
+
+
+def _resolved_orders(db: Session) -> tuple[list[dict], list[dict] | None, list[MemberIdentityLink]]:
+    """返回（原始订单 dict, 认定口径订单或 None, 生效认定）。无生效认定时第三项为空。"""
+    links = _active_identity_links(db)
+    if not links:
+        return [], None, links
+    raw = _order_dicts(db)
+    person_map = identity_core.build_person_map([link.member_codes for link in links])
+    return raw, identity_core.resolve_orders(raw, person_map), links
+
+
+def _effective_orders_for_cohort(db: Session, cohort_month: str) -> list[dict] | None:
+    """认定口径下该有效首单月的归一订单；无生效认定时返回 None（走原始路径）。"""
+    _, resolved, _ = _resolved_orders(db)
+    if resolved is None:
+        return None
+    return [o for o in resolved if o["cohort_month"] == cohort_month]
 
 def _rate_str(rate: float | None) -> str:
     return "—" if rate is None else f"{rate * 100:.1f}%"
@@ -136,9 +182,17 @@ def build_matrix(db: Session) -> dict:
         ).scalar_one()
     )
     order_count = db.execute(select(func.count()).select_from(MemberOrder)).scalar_one()
-    member_count = db.execute(
+    raw_member_count = db.execute(
         select(func.count(func.distinct(MemberOrder.member_code)))
     ).scalar_one()
+
+    # 认定口径：有效人数按「同一人」去重（原始会员码数单独保留，页面展示前后差异）
+    _, resolved_orders, links = _resolved_orders(db)
+    identity_mode = "merged" if links else "raw"
+    if resolved_orders is not None:
+        effective_member_count = len({o["person_code"] for o in resolved_orders})
+    else:
+        effective_member_count = int(raw_member_count)
 
     return {
         "snapshot_month": settings.snapshot_month,
@@ -152,9 +206,14 @@ def build_matrix(db: Session) -> dict:
             "cells_censored": censored_total,
             "low_sample_cells": low_sample_cells,
             "orders": int(order_count),
-            "members": int(member_count),
+            "members": int(effective_member_count),
+            "members_raw": int(raw_member_count),
+            "identity_mode": identity_mode,
+            "active_identity_links": len(links),
             "revenue_total": round(revenue_total, 2),
-            "cumulative_arpu": round(revenue_total / member_count, 2) if member_count else 0.0,
+            "cumulative_arpu": round(
+                revenue_total / effective_member_count, 2
+            ) if effective_member_count else 0.0,
         },
         "notes": {
             "matrix": "M0 = 首单月（全员活跃）；Mn = 第 n 个月有过订单的会员数 / 群规模。",
@@ -195,10 +254,18 @@ def build_detail(db: Session, month: str) -> dict:
             }
         )
 
-    # 订单金额分布（该群全部订单）
-    amounts = db.execute(
-        select(MemberOrder.amount).where(MemberOrder.cohort_month == cohort.month)
-    ).scalars().all()
+    # 订单金额分布：认定口径取归一后的该群订单；否则取原始订单事实
+    effective_orders = _effective_orders_for_cohort(db, cohort.month)
+    if effective_orders is None:
+        amounts = db.execute(
+            select(MemberOrder.amount).where(MemberOrder.cohort_month == cohort.month)
+        ).scalars().all()
+        detail_member_count = cohort.size
+        identity_mode = "raw"
+    else:
+        amounts = [o["amount"] for o in effective_orders]
+        detail_member_count = len({o["person_code"] for o in effective_orders})
+        identity_mode = "merged"
     amount_distribution = bucket_amounts(amounts)
 
     # 渠道拆分：观察期内各渠道贡献与 M1/M3/M6 留存
@@ -241,12 +308,14 @@ def build_detail(db: Session, month: str) -> dict:
         "snapshot_month": settings.snapshot_month,
         "low_sample": cohort.size < settings.low_sample_threshold,
         "note": cohort.note,
+        "identity_mode": identity_mode,
+        "member_count_effective": int(detail_member_count),
         "curve": curve,
         "amount_distribution": amount_distribution,
         "channels": channel_rows,
         "summary": {
             "cumulative_revenue": round(cumulative, 2),
-            "arpu": round(cumulative / cohort.size, 2) if cohort.size else 0.0,
+            "arpu": round(cumulative / detail_member_count, 2) if detail_member_count else 0.0,
             "m1": curve[1]["rate"] if len(curve) > 1 else None,
             "m6": curve[6]["rate"] if len(curve) > 6 else None,
             "m12": curve[12]["rate"] if len(curve) > 12 else None,

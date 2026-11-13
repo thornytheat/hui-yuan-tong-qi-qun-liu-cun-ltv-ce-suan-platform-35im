@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.config.settings import settings
@@ -88,9 +88,24 @@ def compute_results(
     ]
 
     try:
-        return compute_ltv(cohort_inputs, cell_inputs, snapshot, params)
+        results = compute_ltv(cohort_inputs, cell_inputs, snapshot, params)
     except CoreError as exc:
         raise AppError(exc.code, exc.message, exc.detail) from exc
+
+    # 口径标记：测算 / 报告 / 导出共用的留存矩阵是否处于「认定合并」口径
+    from src.constants.enums import IdentityStatus
+    from src.models.member_identity_link import MemberIdentityLink
+
+    active_links = db.execute(
+        select(func.count())
+        .select_from(MemberIdentityLink)
+        .where(MemberIdentityLink.status == IdentityStatus.ACTIVE.value)
+    ).scalar_one()
+    results["identity"] = {
+        "mode": "merged" if active_links else "raw",
+        "active_links": int(active_links or 0),
+    }
+    return results
 
 
 def create_report(db: Session, payload: dict, user) -> LtvReport:

@@ -38,9 +38,9 @@ ARPU 留存拿去做加权最小二乘拿到 λ 与 R²，再折成 12 个月预
 
 | 角色 | 账号 | 主要页面 | 权限 | 典型动作 |
 | --- | --- | --- | --- | --- |
-| `admin` 增长负责人 | `admin@cohortltv.io` | 全部 | 全部 + `ltv:publish` + `audit:read` | 发布报告、看审计、定 CAC 口径 |
-| `analyst` 增长分析师 | `analyst@cohortltv.io` | 矩阵 / 详情 / 测算 / 渠道 | 读 + `matrix:rebuild` + `ltv:run` + `channels:export` | 重建矩阵、跑测算、导出 CSV/MD |
-| `viewer` 渠道与门店（只读） | `viewer@cohortltv.io` | 矩阵 / 详情 / 渠道（仅自己渠道） | 只读，`channel_scope=store` | 看门店回本、看留存矩阵 |
+| `admin` 增长负责人 | `admin@cohortltv.io` | 全部 | 全部 + `ltv:publish` + `identity:write` + `audit:read` | 发布报告、认定/撤销会员码、看审计、定 CAC 口径 |
+| `analyst` 增长分析师 | `analyst@cohortltv.io` | 矩阵 / 详情 / 测算 / 渠道 / 认定 | 读 + `matrix:rebuild` + `ltv:run` + `identity:write` + `channels:export` | 重建矩阵、跑测算、认定/撤销会员码、导出 CSV/MD |
+| `viewer` 渠道与门店（只读） | `viewer@cohortltv.io` | 矩阵 / 详情 / 渠道 / 认定（仅自己渠道可见范围） | 只读，含 `identity:read`，`channel_scope=store` | 看门店回本、看留存矩阵与认定结果 |
 
 低权角色调用高权接口一律由后端返回 **403**（`src/middlewares/rbac.py`），前端按钮禁用只是提示，不是权限。
 
@@ -51,7 +51,10 @@ ARPU 留存拿去做加权最小二乘拿到 λ 与 R²，再折成 12 个月预
 3. **LTV 测算**（算法 2）：观察期 / 毛利率 / 渠道 CAC 可配；后端网格搜索 λ∈[0.02,0.60]、闭式解 a、加权 R²；输出历史 LTV、预测 12 月 LTV、渠道回本表与敏感性表（λ ±0.03、CAC ×0.8/1.0/1.2）。
 4. **复核与发布**：分析师出草稿，负责人发布；发布后渠道页与导出口径冻结。
 5. **渠道对比与导出**：回本周期排行、低样本剔除说明、CSV（4 行）与 MD 说明下载。
-6. **横切**：JWT + 三角色 RBAC、审计日志（登录/重建/测算/发布/导出/越权）、Redis 滑动窗口限流、全局错误处理。
+6. **一员多码认定**：门店 / 私域 / 信息流的不同会员码可认定为同一人（可撤销误认）；
+   认定后按最早消费月重新分群、历史订单只在首次获客渠道计一次，撤销恢复原始分群，
+   同一认定重复执行只生效一次；页面展示认定前后会员数、首单月与渠道归属变化。
+7. **横切**：JWT + 三角色 RBAC、审计日志（登录/重建/测算/发布/导出/认定/撤销/越权）、Redis 滑动窗口限流、全局错误处理。
 
 ## 3. 快速启动
 
@@ -108,11 +111,11 @@ gb-584/
 │   └── src/
 │       ├── config/             # settings / database / celery_app / app
 │       ├── constants/          # enums / roles / channels / error_codes / limits / templates
-│       ├── models/             # cohort / member_order / retention_cell / ltv_report / audit_log / user
-│       ├── schemas/            # auth / cohort / ltv / channel / audit / common
-│       ├── services/           # decay_fit / retention / cohort / ltv / channel / export / auth / audit
+│       ├── models/             # cohort / member_order / member_identity_link / retention_cell / ltv_report / audit_log / user
+│       ├── schemas/            # auth / cohort / identity / ltv / channel / audit / common
+│       ├── services/           # decay_fit / retention / identity / cohort / ltv / channel / export / auth / audit
 │       ├── controllers/        # 参数编排 + 审计
-│       ├── routes/             # /api 路由（健康、认证、矩阵、测算、渠道、导出、审计）
+│       ├── routes/             # /api 路由（健康、认证、矩阵、认定、测算、渠道、导出、审计）
 │       ├── middlewares/        # auth / rbac / rate_limit / audit_logger / security_headers / error_handler
 │       └── utils/              # jwt / errors / logger / redis_client / months / numbers
 ├── worker/
@@ -121,16 +124,16 @@ gb-584/
 └── frontend/
     ├── Dockerfile  nginx.conf  index.html  vite.config.ts
     └── src/
-        ├── api/                # http / auth / cohort / ltv / channel / audit
-        ├── stores/             # auth / cohort / ltv
-        ├── types/              # api / user / domain
+        ├── api/                # http / auth / cohort / identity / ltv / channel / audit
+        ├── stores/             # auth / cohort / identity / ltv
+        ├── types/              # api / user / domain / identity
         ├── constants/          # enums / roles / messages
         ├── components/common/  # AppShell / PageHeader / StampSeal / EmptyState / ErrorNotice / RoastLegend
-        ├── components/business/# RetentionHeatTable / RetentionCurve / AmountHistogram / SensitivityTable / PaybackBars
+        ├── components/business/# RetentionHeatTable / RetentionCurve / AmountHistogram / SensitivityTable / PaybackBars / IdentityChangePanel
         ├── hooks/              # useAsync / useLtvForm
         ├── utils/              # request / format / curve
         ├── router/             # index / guards
-        ├── pages/              # Login / Matrix / CohortDetail / Ltv / Channels
+        ├── pages/              # Login / Matrix / CohortDetail / Ltv / Channels / Identity
         └── styles/             # tokens.css / base.css
 ```
 
@@ -180,6 +183,20 @@ gb-584/
 - 群或「群×渠道」样本 < 30 → `low_sample`，不进入渠道排行；
 - 无 scipy/sklearn 依赖：13 个月列 × 581 个候选 λ，纯 Python 手写。
 
+**算法 3 · 一员多码认定与重新归因**（`backend/src/services/identity_core.py` + `identity_service.py`）
+
+- 认定：并查集把若干 `member_code` 合并为同一 `person_code`（取字典序最小码），
+  组间有公共码自动并为一人；`fingerprint = sha256('|'.join(sorted(codes)))` 与顺序无关；
+- 重新分群：一个人的首单月 = 其全部订单的最早 `order_month`，该人整体归入该首单月同期群，
+  订单有效月序 = 相对新首单月的月差；
+- 渠道归因：历史订单只在该人的**首次获客渠道**计一次 —— 取最早消费月内最早一笔订单的渠道
+  （`is_first_order` 优先，再按 `ordered_at / channel` 稳定兜底）；
+- 归一后的订单经同一套 `retention_core` 聚合落库，因此**留存矩阵、LTV 与导出共用同一结果**；
+- 撤销：不应用任何认定组，矩阵走原始路径重建，恢复各会员码原来的分群与渠道归属；
+- 幂等：同一组码的生效认定只允许一条（partial unique index `WHERE status='active'`），
+  重复提交回显既有记录、不重建、不重复写审计；撤销后允许同组码重新认定；
+- 入参冲突（码已在其他生效认定中）→ 409 `IDENTITY_CONFLICT`，未知会员码 → 422 `IDENTITY_CODE_UNKNOWN`。
+
 ## 9. 共享枚举出现位置
 
 **枚举 A：渠道 `Channel`（private / paid_feed / store / partner / all）**
@@ -205,6 +222,15 @@ gb-584/
 
 - 后端：`backend/src/constants/roles.py`、`backend/src/middlewares/rbac.py`、`backend/src/services/auth_service.py`
 - 前端：`frontend/src/constants/roles.ts`、`frontend/src/stores/authStore.ts`、`frontend/src/components/common/AppShell.vue`
+
+**枚举 D：认定状态 `IdentityStatus`（active / revoked）**
+
+- 后端：`backend/src/constants/enums.py`、`backend/src/constants/error_codes.py`（认定相关错误码）、
+  `backend/src/constants/templates.py`（`identity.merge` / `identity.revoke` 动作与口径文案）、
+  `backend/src/models/member_identity_link.py`、`backend/src/services/{identity_core,identity_service,retention_service}.py`
+- 前端：`frontend/src/types/identity.ts`、`frontend/src/constants/messages.ts`、
+  `frontend/src/stores/identityStore.ts`、`frontend/src/pages/IdentityPage.vue`、
+  `frontend/src/components/business/IdentityChangePanel.vue`、`frontend/src/components/common/AppShell.vue`
 
 ## 10. 本地开发（可选）
 

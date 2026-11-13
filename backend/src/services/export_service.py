@@ -55,6 +55,14 @@ def report_md(results: dict, report_name: str, published_at: str | None = None) 
         f"- ARPU₀ = ¥{results['arpu0']:.2f}；历史 LTV = ¥{results['ltv_hist']:,}；"
         f"预测 12 月 LTV = ¥{results['ltv_pred12']:,}",
         f"- 毛利率 {params['margin_rate'] * 100:.0f}%（回本周期按毛利口径）",
+    ]
+    identity = results.get("identity") or {}
+    if identity.get("mode") == "merged":
+        lines.append(
+            f"- 会员口径：一员多码认定已生效（{identity.get('active_links', 0)} 组），"
+            "按最早消费月重新分群、历史订单仅在首次获客渠道计一次；与留存矩阵同口径"
+        )
+    lines += [
         "",
         "| 排名 | 渠道 | CAC | 样本 | 月均毛利贡献 | 回本周期 | 历史 LTV | 预测 12 月 LTV |",
         "| --- | --- | --- | --- | --- | --- | --- | --- |",

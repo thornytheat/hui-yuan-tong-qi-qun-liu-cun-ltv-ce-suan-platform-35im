@@ -16,6 +16,12 @@ export const ERROR_MESSAGES: Record<string, string> = {
   LOW_SAMPLE_ONLY: '样本量不足（<30），不参与渠道排行',
   JOB_NOT_FOUND: '任务不存在或已过期',
   RATE_LIMITED: '请求过于频繁，请稍后重试',
+  IDENTITY_CODES_INVALID: '会员码数量不足或重复，一次认定至少需要 2 个不同会员码',
+  IDENTITY_CODE_UNKNOWN: '存在订单事实里找不到的会员码',
+  IDENTITY_LINK_NOT_FOUND: '认定记录不存在',
+  IDENTITY_NOT_ACTIVE: '该认定已撤销，不能重复撤销',
+  IDENTITY_CONFLICT: '会员码已存在生效中的认定，请先撤销原认定',
+  IDENTITY_DUPLICATE: '同一组会员码的认定已存在，重复提交不再生效',
   INTERNAL_ERROR: '服务内部错误',
 }
 
@@ -25,4 +31,5 @@ export const EMPTY_HINTS = {
   ltv: '先跑一次测算：确认观察期与渠道 CAC 后点「运行测算」。',
   channels: '渠道对比来自最新已发布的测算报告，先去「LTV 测算」发布一份。',
   audit: '暂无审计记录，登录或重建矩阵后会写入。',
+  identity: '把同一人在门店、私域、信息流的多个会员码填入左侧表单，认定后矩阵会自动重建。',
 }

@@ -35,6 +35,12 @@ const router = createRouter({
       component: () => import('../pages/ChannelsPage.vue'),
       meta: { title: '渠道对比' },
     },
+    {
+      path: '/identity',
+      name: 'identity',
+      component: () => import('../pages/IdentityPage.vue'),
+      meta: { title: '会员身份认定' },
+    },
     { path: '/:pathMatch(.*)*', redirect: '/matrix' },
   ],
   scrollBehavior: () => ({ top: 0 }),

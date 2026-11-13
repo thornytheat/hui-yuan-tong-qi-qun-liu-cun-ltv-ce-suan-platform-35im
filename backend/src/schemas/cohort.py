@@ -55,6 +55,9 @@ class MatrixStatsOut(BaseModel):
     low_sample_cells: int
     orders: int
     members: int
+    members_raw: int | None = None
+    identity_mode: str = "raw"
+    active_identity_links: int = 0
     revenue_total: float
     cumulative_arpu: float
 

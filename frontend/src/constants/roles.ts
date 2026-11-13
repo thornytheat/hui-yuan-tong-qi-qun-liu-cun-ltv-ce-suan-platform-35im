@@ -23,6 +23,8 @@ export const PERMISSIONS: Record<string, UserRole[]> = {
   'ltv:publish': [ROLE_ADMIN],
   'channels:read': ALL_ROLES,
   'channels:export': [ROLE_ADMIN, ROLE_ANALYST],
+  'identity:read': ALL_ROLES,
+  'identity:write': [ROLE_ADMIN, ROLE_ANALYST],
   'audit:read': [ROLE_ADMIN],
 }
 

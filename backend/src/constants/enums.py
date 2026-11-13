@@ -37,6 +37,11 @@ class DecayModel(StrEnum):
     EXPONENTIAL = "exponential"   # R_m = a * exp(-lambda * m)
 
 
+class IdentityStatus(StrEnum):
+    ACTIVE = "active"      # 认定生效中
+    REVOKED = "revoked"    # 已撤销（保留留痕，恢复原始分群）
+
+
 CHANNEL_VALUES: tuple[str, ...] = (
     Channel.PRIVATE, Channel.PAID_FEED, Channel.STORE, Channel.PARTNER, Channel.ALL,
 )
